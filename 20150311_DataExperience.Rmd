@@ -1,0 +1,150 @@
+---
+title: "数据相关经历梳理"
+author: "颜知之"
+date: "03/11/2015"
+output: html_document
+---
+
+# 1. 基本统计知识的学习
+
+##1.1简单的数据处理
+
+```{r}
+setwd("d://R_data//course")
+phone <- read.csv("cellphone.csv",header = TRUE, stringsAsFactors = FALSE)
+str(phone)
+head(phone)
+dim(phone)
+summary(phone)
+
+#将数据列提取出来
+Seller <- phone$Seller
+MSales <- phone$MSales
+Comments <- phone$Comments
+
+#提取城市信息  列名：Place_prov & Place_city, 数据框名place.
+head(phone$Place)
+unique(phone$Place)
+provinceTmp <- strsplit(phone$Place," ")#字符串分割
+class(provinceTmp); provinceTmp[[1]]
+
+Place_prov <- sapply(provinceTmp,"[",1);head(Place_prov)
+Place_city <- sapply(provinceTmp,"[",2);head(Place_city)
+Place_prov <- gsub("货到付款","",Place_prov)
+Place_city <- gsub("货到付款","",Place_city)
+Place_city <- gsub("淘宝代购","",Place_city)
+unique(Place_city)
+unique(Place_prov)
+
+Place_city[is.na(Place_city)] <- Place_prov[is.na(Place_city)]
+
+#处理Legend
+table(phone$Legend)
+#和5985进行比较
+length(grep(".*七天退换.*",phone$Legend))
+head(grep(".*七天退换.*",phone$Legend))
+
+Legend_7days <- c("","") #相当于创建一个空的character型向量
+Legend_7days[grep(".*七天退换.*",phone$Legend)] <- "七天退换"
+Legend_7days[-grep(".*七天退换.*",phone$Legend)] <- "非七天退换"
+
+#处理一下Price列
+head(phone$Price)
+tmp <- strsplit(phone$Price,"        ")
+Price <- sapply(tmp,"[",1)
+Price <- as.numeric(Price)
+Carriage <- sapply(tmp,"[",2)
+Carriage <- gsub("运费：","",Carriage)
+Carriage <- as.numeric(Carriage)
+
+
+Tmp <- data.frame(Seller, Legend_7days, MSales, Comments, Place_prov,Place_city)
+
+sumDF <- aggregate(Tmp[c(3,4)],list(Tmp$Seller,Tmp$Legend_7days,Tmp$Place_prov,Tmp$Place_city),sum)
+dim(sumDF)
+names(sumDF) <- c("Seller","Comments","Place_prov","Place_city","Legend_7days","MSales")
+#-----写文件------
+write.csv(sumDF,file = "sumDF.csv",row.names = FALSE)
+
+#一个不汇总版本的处理后文件
+phone1 <- data.frame(Summary = phone$Summary, Price = Price, Carriage = Carriage, 
+                     Seller = Seller, Province = Place_prov, City = Place_city, 
+                     MSales = MSales, Comments = Comments, Legend_7days = Legend_7days)
+
+```
+
+```{r,message=FALSE}
+library(dplyr)
+Another <-phone1 %>% group_by(Seller, Legend_7days, Province, City) %>% 
+                   summarise(MonthSale = sum(MSales),Comment = sum(Comments))
+dim(Another)
+filter(Another, Province == "北京" & MonthSale > 1000)
+```
+
+##1.2 描述性统计
+
+```{r,message=FALSE}
+boxplot(Another$MonthSale ~ as.factor(Another$Place_prov),outline = F)
+
+prov_sales <- tapply(MSales, Place_prov, sum)
+prov_sales
+
+prov_sales <- prov_sales[order(-prov_sales)]
+barplot(prov_sales, main = "Cellphone monthly sales in different provinces",
+        xlab = "Province", ylab = "Monthly Sales",col = "blue",cex.axis = 0.5)
+
+length(unique(Tmp$Seller))
+shopAmount <- Tmp %>% group_by(Place_prov) %>% summarise(Amount = length(unique(Seller))) 
+shopAmount
+barplot(shopAmount$Amount,names.arg = shopAmount$Place_prov)
+
+plot(Tmp$Comments, Tmp$MSales, xlim = c(0,5000), ylim = c(0,5000),main = "MSales on different comments")
+
+smoothScatter(subset(phone1,MSales< mean(MSales) + 3*sd(MSales))[,c("MSales","Price")], 
+              main = "MSales on different price", xlab = "Price", ylab = "MSales",
+              colramp = colorRampPalette(c("white", "blue")))
+```
+
+##1.3 简单的回归模型
+ 
+\  **这里我们以月销量为因变量，探寻  价格、评价数量、运费、店家所在地**这几项因素与月销量的关系。
+
+变量类型：
+
+- 连续型变量  价格、运费、评价数量
+- 离散型变量  店家所在地（这里只取省）
+
+###1.3.1 多元线性回归——连续型因变量 + 连续型自变量
+
+```{r}
+library(corrplot)
+tmp <- phone1[,c(2,3,8,9)]
+M <- cor(tmp)
+corrplot(M)
+
+lm1 <- lm(MSales ~ Price + Comments + Carriage, data = phone1)
+summary(lm1)
+AIC(lm1)
+
+par(mfrow = c(2,2))
+plot(lm1)
+
+lm2 <- lm(MSales ~ Comments + Carriage, data = phone1)
+summary(lm2)
+plot(lm2)
+
+par(mfrow = c(1,1))
+
+library(car)
+vif(lm1)
+```
+
+###1.3.2 方差分析——连续型变量 + 离散型自变量
+
+```{r}
+shapiro.test(sample(phone1$MSales,size = 5000))
+```
+
+
+
+# 2.关于使用echarts进行数据可视化
