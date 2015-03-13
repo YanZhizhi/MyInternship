@@ -1,0 +1,89 @@
+---
+title: "多元线性回归"
+author: "颜知之"
+date: "03/17/2015"
+output: html_document
+---
+
+#1.读入和观察数据
+
+```{r,warning=FALSE,message=F}
+roe <- read.table(file = "d://R_data//course//roe.txt",header = T) 
+str(roe)
+#ATO:资产周转率；LEV：债务资本比率；PB市倍率；ARR：应收/主营业务收入；PM：主营利润/主营业务收入
+#GROWTH：主营业务增长率；INV：存货/资产总计；ASSET：对数变换后的资产总计
+```
+
+#2.描述性分析
+
+```{r}
+summary(roe)
+
+#从原数据中中选出year为2002的数据，并删除第1列，然后赋值给a1
+#基于2002年样本建模，对2013年数据进行预测
+roe1 <- roe[roe$year==2002,-1] 
+
+plot(roe1$ROEt, roe1$ROE)
+
+library(corrplot)
+M <- cor(roe)
+corrplot(M)
+```
+
+#3.参数估计&假设检验
+
+```{r}
+lm1=lm(ROE~ROEt+ATO+PM+LEV+GROWTH+PB+ARR+INV+ASSET,data=roe1)    	#用roe1的数据拟合线性回归模型
+summary(lm1)
+```
+
+\  **F检验结果 检查的是整体模型的有效性，即是否至少有一个变量对因变量有重要的解释作用。SST是总平方和，SSE是残差平方和。**$R^2$表示能被模型解释的部分占总误差的百分比，通俗的说就是有多少变量被这个模型解释了。   
+
+\  $$H0: β_i = 0,  H1: 至少一个β_i≠0$$
+\  $$F = \frac{(SST - SSE)/p}{SSE / (n-p-1)}$$
+
+#4.模型诊断
+
+```{r,message=FALSE}
+par(mfrow=c(2,2))  							#设置画图为2x2的格式
+plot(lm1,which=c(1:4))								#画出lm1中对应于模型检验的4张图，包括残差图、QQ图和Cook距离图
+
+roe1=roe1[-47,]									#删除第47行的观测
+lm2=lm(ROE~ROEt+ATO+PM+LEV+GROWTH+PB+ARR+INV+ASSET,data=roe1)			#用上一行命令得到的新数据a1再次拟合线型回归模型，结果赋值给lm2	
+plot(lm2,which=c(1:4))								#画出lm2中对应于模型检验的4张图，包括残差图、QQ图和Cook距离图
+#检查多重共线性
+library(car)  								#载入程序包Car
+round(vif(lm2),2)								#计算模型lm2的方差膨胀因子，用2位小数点的格式展示
+```
+
+#5.变量选择
+
+\  **AIC和BIC是跳出假设检验之外的对变量进行筛选的常用指标。AIC更为保守，选出的模型变量个数相对较多，容易过拟合。BIC则恰恰相反。**
+
+```{r}
+#根据AIC准则选出最优模型，并赋值给lm.aic
+lm.aic <- step(lm2,trace=F)	#trace参数用于设置是否把每一步的计算打印出来
+summary(lm.aic)					
+lm.bic <- step(lm2,k=log(length(roe1[,1])),trace = F)
+summary(lm.bic)
+```
+
+#6.模型预测
+
+```{r}
+roe2 <- roe[roe$year==2003,-1] 
+
+y1=predict(lm2,roe2)#用全模型lm2对roe2进行预测
+y2=predict(lm.aic,roe2)#用模型lm.aic对roe2进行预测
+y3=predict(lm.bic,roe2)#用模型lm.aic对roe2进行预测
+y0=roe2[,10]#选出第10列，即当年的ROE
+
+r0=y0-roe2$ROEt#用当年ROE对下年进行预测的残差
+r1=y0-y1#用全模型lm2预测的残差
+r2=y0-y2#用模型lm.aic预测的残差
+r3=y0-y3#用模型lm.bic预测的残差
+resid=abs(as.data.frame(cbind(r0,r1,r2,r3)))#计算残差的绝对值
+sapply(resid,mean)#计算不同模型的平均绝对偏差，即对残差的绝对值取平均
+```
+
+\  **从结果来看，基于线性模型的预测结果均优于仅靠当年净资产收益率的预测。基于线性模型的三个预测结果相差不大，但与全模型相比，AIC或BIC适用的模型相对简单，也帮助我们理解了那些财务指标相对更重要些。**

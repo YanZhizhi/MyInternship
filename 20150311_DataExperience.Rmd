@@ -24,6 +24,7 @@ Comments <- phone$Comments
 
 #提取城市信息  列名：Place_prov & Place_city, 数据框名place.
 head(phone$Place)
+phone$Place[nchar(phone$Place) == max(nchar(phone$Place))]
 unique(phone$Place)
 provinceTmp <- strsplit(phone$Place," ")#字符串分割
 class(provinceTmp); provinceTmp[[1]]
@@ -60,6 +61,7 @@ Carriage <- as.numeric(Carriage)
 
 Tmp <- data.frame(Seller, Legend_7days, MSales, Comments, Place_prov,Place_city)
 
+#按list括号里的各项进行汇总
 sumDF <- aggregate(Tmp[c(3,4)],list(Tmp$Seller,Tmp$Legend_7days,Tmp$Place_prov,Tmp$Place_city),sum)
 dim(sumDF)
 names(sumDF) <- c("Seller","Comments","Place_prov","Place_city","Legend_7days","MSales")
@@ -78,73 +80,150 @@ library(dplyr)
 Another <-phone1 %>% group_by(Seller, Legend_7days, Province, City) %>% 
                    summarise(MonthSale = sum(MSales),Comment = sum(Comments))
 dim(Another)
+#按给定条件进行行筛选
 filter(Another, Province == "北京" & MonthSale > 1000)
 ```
 
 ##1.2 描述性统计
 
 ```{r,message=FALSE}
-boxplot(Another$MonthSale ~ as.factor(Another$Place_prov),outline = F)
+boxplot(Another$MonthSale ~ as.factor(Another$Province),outline = F,
+        main="MSales Distribution in different provinces")
+boxplot(Another$MonthSale ~ as.factor(Another$Province))
+```
 
+\  **箱线图展现的是连续型变量的分布情况。从图上可以看出每个省的店铺手机月销量的分布情况。最远的点默认是 均值±1.5个标准差。**
+
+```{r}
 prov_sales <- tapply(MSales, Place_prov, sum)
+prov_sales <- prov_sales[order(-prov_sales)]
 prov_sales
 
-prov_sales <- prov_sales[order(-prov_sales)]
 barplot(prov_sales, main = "Cellphone monthly sales in different provinces",
         xlab = "Province", ylab = "Monthly Sales",col = "blue",cex.axis = 0.5)
 
 length(unique(Tmp$Seller))
 shopAmount <- Tmp %>% group_by(Place_prov) %>% summarise(Amount = length(unique(Seller))) 
 shopAmount
-barplot(shopAmount$Amount,names.arg = shopAmount$Place_prov)
+barplot(shopAmount$Amount,names.arg = shopAmount$Place_prov,
+        main = "Shop quantity in different province")
+```
 
+\  **这里展示的是经排序后的不同省份的手机总月销量以及不同省份的店铺数量**  
+
+```{r}
 plot(Tmp$Comments, Tmp$MSales, xlim = c(0,5000), ylim = c(0,5000),main = "MSales on different comments")
 
 smoothScatter(subset(phone1,MSales< mean(MSales) + 3*sd(MSales))[,c("MSales","Price")], 
               main = "MSales on different price", xlab = "Price", ylab = "MSales",
-              colramp = colorRampPalette(c("white", "blue")))
+              colramp = colorRampPalette(c("white", "purple")))
 ```
 
-##1.3 简单的回归模型
+##1.3 一些回归模型
  
-\  **这里我们以月销量为因变量，探寻  价格、评价数量、运费、店家所在地**这几项因素与月销量的关系。
-
 变量类型：
 
-- 连续型变量  价格、运费、评价数量
-- 离散型变量  店家所在地（这里只取省）
+- 连续型变量  
+- 离散型变量  
 
 ###1.3.1 多元线性回归——连续型因变量 + 连续型自变量
 
-```{r}
+```{r,warning=FALSE,message=F}
+roe <- read.table(file = "d://R_data//course//roe.txt",header = T) 
+str(roe)
+#ATO:资产周转率；LEV：债务资本比率；PB市倍率；ARR：应收/主营业务收入；PM：主营利润/主营业务收入
+#GROWTH：主营业务增长率；INV：存货/资产总计；ASSET：对数变换后的资产总计
+summary(roe)
+#从原数据中中选出year为2002的数据，并删除第1列，然后赋值给a1
+roe1 <- roe[roe$year==2002,-1] 
+
 library(corrplot)
-tmp <- phone1[,c(2,3,8,9)]
-M <- cor(tmp)
+M <- cor(roe)
 corrplot(M)
 
-lm1 <- lm(MSales ~ Price + Comments + Carriage, data = phone1)
+lm1=lm(ROE~ROEt+ATO+PM+LEV+GROWTH+PB+ARR+INV+ASSET,data=roe1)  		#用roe1的数据拟合线性回归模型
 summary(lm1)
-AIC(lm1)
+```
 
-par(mfrow = c(2,2))
-plot(lm1)
+\  **F检验结果 检查的是整体模型的有效性，即是否至少有一个变量对因变量有重要的解释作用。SST是总平方和，SSE是残差平方和。**$R^2$表示能被模型解释的部分占总误差的百分比，通俗的说就是有多少变量被这个模型解释了。   
 
-lm2 <- lm(MSales ~ Comments + Carriage, data = phone1)
-summary(lm2)
-plot(lm2)
+\  $$H0: β_i = 0,  H1: 至少一个β_i≠0$$
+\  $$F = \frac{(SST - SSE)/p}{SSE / (n-p-1)}$$
 
-par(mfrow = c(1,1))
+```{r,message=FALSE}
+par(mfrow=c(2,2))  							#设置画图为2x2的格式
+plot(lm1,which=c(1:4))								#画出lm1中对应于模型检验的4张图，包括残差图、QQ图和Cook距离图
 
-library(car)
-vif(lm1)
+roe1=roe1[-47,]									#删除第47行的观测
+lm2=lm(ROE~ROEt+ATO+PM+LEV+GROWTH+PB+ARR+INV+ASSET,data=roe1)			#用上一行命令得到的新数据a1再次拟合线型回归模型，结果赋值给lm2	
+plot(lm2,which=c(1:4))								#画出lm2中对应于模型检验的4张图，包括残差图、QQ图和Cook距离图
+
+library(car)  								#载入程序包Car
+round(vif(lm2),2)								#计算模型lm2的方差膨胀因子，用2位小数点的格式展示
+
+#根据AIC准则选出最优模型，并赋值给lm.aic
+lm.aic=step(lm2,trace=F)	#trace参数用于设置是否把每一步的计算打印出来
+summary(lm.aic)									
 ```
 
 ###1.3.2 方差分析——连续型变量 + 离散型自变量
 
 ```{r}
-shapiro.test(sample(phone1$MSales,size = 5000))
+bwt <- read.csv(file = "d://R_data//course//lowbwt.csv",header = T) 
+str(bwt)
+#检验因变量的正态性
+shapiro.test(bwt$BWT)
+d0 <- bwt[c(2,11,5:9)]
+d0$FREQ <- 1
+head(d0)
+
+tab1 <- table(d0$LOW,d0$RACE)
+summary(tab1)
 ```
 
+\  **RACE, SMOKE, PTL, HT, UI均可视为离散型自变量**
+
+```{r}
+par(mfrow = c(1,1))
+boxplot(d0$BWT~d0$RACE)
+tab1 <- xtabs(FREQ~RACE + LOW, data = d0)
+ftable(tab1)
+plot(tab1,xlab = "1:白人；2：黑人；3：其他", ylab = "1：宝宝低重；0：宝宝正常",
+     main = "是否低重儿与产妇所属人种的关系")#马赛克图
+chisq.test(tab1)
+```
+
+```{r}
+#做单因素方差分析
+lm1 <- lm(BWT~as.factor(RACE), data = d0) 
+summary(lm1)								
+Anova(lm1,type="III")	
+
+#全模型方差分析
+lm2 <- lm(BWT ~ as.factor(RACE) + as.factor(SMOKE) +  as.factor(PTL) + 
+            as.factor(HT) + as.factor(UI) ,data = d0)
+summary(lm2)
+```
+
+###1.3.3 广义线性回归——逻辑斯蒂模型
+
+#####0-1回归
+
+```{r}
+
+```
+
+#####定序回归
+
+```{r}
+
+```
+
+##1.4主成分分析和因子分析（可用作变量筛选）
+
+##1.5聚类
+
+##1.6分类
 
 
 # 2.关于使用echarts进行数据可视化
