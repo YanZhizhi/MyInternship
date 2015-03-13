@@ -1,0 +1,61 @@
+---
+title: "方差分析"
+author: "颜知之"
+date: "03/17/2015"
+output: html_document
+---
+
+#1.读入数据并观察
+
+```{r}
+bwt <- read.csv(file = "d://R_data//course//lowbwt.csv",header = T) 
+str(bwt)
+#检验因变量的正态性
+shapiro.test(bwt$BWT)
+d0 <- bwt[c(2,11,5:9)]
+d0$FREQ <- 1
+head(d0)
+```
+
+#2.描述性分析
+
+```{r}
+boxplot(d0$BWT~d0$RACE)
+tab1 <- xtabs(FREQ~RACE + LOW, data = d0)
+ftable(tab1)
+plot(tab1,xlab = "1:白人；2：黑人；3：其他", ylab = "1：宝宝低重；0：宝宝正常",
+     main = "是否低重儿与产妇所属人种的关系",col = c(1,2))#马赛克图
+chisq.test(tab1)
+
+tab2 <- xtabs(FREQ~SMOKE + LOW,data = d0)
+ftable(tab2)
+plot(tab2,xlab = "0:不吸烟；1：吸烟", ylab = "1：宝宝低重；0：宝宝正常",
+     main = "是否低重儿与产妇孕期是否吸烟的关系",col = c(1,2))#马赛克图
+fourfoldplot(tab2,main = "是否低重儿与产妇孕期是否吸烟的关系四瓣图")
+chisq.test(tab2)
+```
+
+#3.多因素无交互方差分析
+
+```{r,message=FALSE}
+library(car)
+#做单因素方差分析
+lm1 <- lm(BWT~as.factor(RACE), data = d0)  
+summary(lm1)  							
+Anova(lm1,type="III")	
+
+#全模型方差分析
+lm2 <- lm(BWT ~ as.factor(RACE) + as.factor(SMOKE) +  as.factor(PTL) + 
+            as.factor(HT) + as.factor(UI) ,data = d0)
+summary(lm2)
+```
+
+#4.模型评估
+
+```{r,message=FALSE,warning=FALSE}
+par(mfrow = c(2,2))
+plot(lm2,which = c(1:4))
+```
+
+\  **图中没有发现任何严重背离模型假设的证据，因此该模型可以接受。**
+
